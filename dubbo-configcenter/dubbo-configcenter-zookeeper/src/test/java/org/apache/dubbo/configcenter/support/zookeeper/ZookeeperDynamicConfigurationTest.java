@@ -36,6 +36,7 @@ import org.junit.jupiter.api.Test;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * TODO refactor using mockito
@@ -47,6 +48,7 @@ public class ZookeeperDynamicConfigurationTest {
     private static int zkServerPort = NetUtils.getAvailablePort();
     private static TestingServer zkServer;
     private static DynamicConfiguration configuration;
+    private static final String CONDITION_ROUTER_PATH = "/dubbo/config/group1/service1:version1/condition-router";
 
     @BeforeAll
     public static void setUp() throws Exception {
@@ -62,6 +64,7 @@ public class ZookeeperDynamicConfigurationTest {
             setData("/dubbo/config/appname", "The content from higer level node");
             setData("/dubbo/config/appname/tagrouters", "The content from appname tagrouters");
             setData("/dubbo/config/never.change.DemoService/configurators", "Never change value from configurators");
+            setData(CONDITION_ROUTER_PATH, "conditions: - host = 172.17.52.10 => host = 172.17.52.10");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -92,25 +95,31 @@ public class ZookeeperDynamicConfigurationTest {
 
     @Test
     public void testAddListener() throws Exception {
-        CountDownLatch latch = new CountDownLatch(4);
+        CountDownLatch latch = new CountDownLatch(5);
         TestListener listener1 = new TestListener(latch);
         TestListener listener2 = new TestListener(latch);
         TestListener listener3 = new TestListener(latch);
         TestListener listener4 = new TestListener(latch);
+        TestListener listener5 = new TestListener(latch);
         configuration.addListener("group*service:version.configurators", listener1);
         configuration.addListener("group*service:version.configurators", listener2);
         configuration.addListener("appname.tagrouters", listener3);
         configuration.addListener("appname.tagrouters", listener4);
+        configuration.addListener("group1*service1:version1.condition-router", listener5);
 
         setData("/dubbo/config/group*service:version/configurators", "new value1");
         Thread.sleep(100);
         setData("/dubbo/config/appname/tagrouters", "new value2");
         Thread.sleep(100);
         setData("/dubbo/config/appname", "new value3");
+        Thread.sleep(100);
+        setData(CONDITION_ROUTER_PATH, "conditions: - host = 172.17.52.10 => host = 172.17.52.10:20880");
 
-        Thread.sleep(5000);
+        boolean await = latch.await(5000, TimeUnit.MILLISECONDS);
+        long count = latch.getCount();
+        System.out.println("######count:" + count);
+        Assertions.assertTrue(await);
 
-        latch.await();
         Assertions.assertEquals(1, listener1.getCount("group*service:version.configurators"));
         Assertions.assertEquals(1, listener2.getCount("group*service:version.configurators"));
         Assertions.assertEquals(1, listener3.getCount("appname.tagrouters"));
