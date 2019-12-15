@@ -20,3 +20,6 @@ after_success:
 
 after_failure:
   - echo "build failed!"
+
+notifications:
+    webhooks: https://oapi.dingtalk.com/robot/send?access_token=${NOTIFY_TOKEN}
